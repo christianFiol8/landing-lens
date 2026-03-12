@@ -70,10 +70,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ checkout_url: session.url })
 
-  } catch (error) {
-    console.error('Error en /api/stripe/checkout:', error)
+  } catch (error: any) {
+    console.error('Error en /api/stripe/checkout:', error?.message || error)
+    console.error('Stack:', error?.stack)
+    console.error('Stripe error type:', error?.type)
     return NextResponse.json(
-      { error: 'Error al crear el checkout' },
+      { error: 'Error al crear el checkout', detail: error?.message },
       { status: 500 }
     )
   }
