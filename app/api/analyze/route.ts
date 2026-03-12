@@ -5,7 +5,6 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   try {
-
     const supabase = await createServerSupabaseClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -15,6 +14,7 @@ export async function POST(request: Request) {
         { status: 401 }
       )
     }
+
     const body = await request.json()
     const { url } = body
 
@@ -25,13 +25,28 @@ export async function POST(request: Request) {
       )
     }
 
+    // Verificar créditos o plan
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('plan, credits, subscription_status')
+      .eq('id', user.id)
+      .single()
+
+    const hasAccess =
+      profile?.plan === 'monthly' && profile?.subscription_status === 'active' ||
+      (profile?.credits && profile.credits > 0)
+
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: 'insufficient_credits' },
+        { status: 402 }
+      )
+    }
+
+  
     const { data: analysis, error: dbError } = await supabase
       .from('analyses')
-      .insert({
-        user_id: user.id,
-        url,
-        status: 'processing'
-      })
+      .insert({ user_id: user.id, url, status: 'processing' })
       .select()
       .single()
 
@@ -41,16 +56,22 @@ export async function POST(request: Request) {
         { status: 500 }
       )
     }
+
+    // Scraping
     const scrapeData = await scrapeLandingPage(url)
 
+    // Análisis con Claude
     const reportJson = await analyzeLandingPage(scrapeData)
 
+    // Score general
     const overallScore = Math.round(
       (reportJson.ux_analysis.score +
         reportJson.copy_analysis.score +
         reportJson.conversion_recommendations.score) / 3
     )
-    const { data: updatedAnalysis } = await supabase
+
+    // Actualizar resultado
+    await supabase
       .from('analyses')
       .update({
         status: 'completed',
@@ -62,8 +83,14 @@ export async function POST(request: Request) {
         screenshot_url: scrapeData.screenshotBase64
       })
       .eq('id', analysis.id)
-      .select()
-      .single()
+
+    // Si es pago por uso, descontar 1 crédito
+    if (profile?.plan !== 'monthly') {
+      await supabase
+        .from('profiles')
+        .update({ credits: (profile?.credits || 1) - 1 })
+        .eq('id', user.id)
+    }
 
     return NextResponse.json({
       analysis_id: analysis.id,
