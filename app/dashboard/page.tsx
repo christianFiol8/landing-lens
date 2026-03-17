@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import LogoutButton from './LogoutButton'
 import AnalyzeForm from './AnalyzeForm'
+import PaymentSuccess from './PaymentSuccess'
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient()
@@ -32,6 +33,8 @@ export default async function DashboardPage() {
           </div>
         </div>
       </header>
+
+      <PaymentSuccess />
 
       <main className="max-w-4xl mx-auto px-4 py-12">
         <div className="text-center mb-10">
